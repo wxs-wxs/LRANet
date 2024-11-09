@@ -1,6 +1,6 @@
 find_unused_parameters=True
-num_coefficients = 360 # 每个文本预测720个点
-path_lra = '/vhome/wangxuesheng/LRANet-main/eigenanchors/lra_totaltext_14.npz'  #'./eigenanchors/lra_totaltext_14.npz'
+num_coefficients = 14 # 每个文本预测720个点
+path_lra = './eigenanchors/pca_14.npz'  #'./eigenanchors/lra_totaltext_14.npz'
 
 model = dict(
     type='LRANet',
@@ -116,19 +116,19 @@ data = dict(
         dataset=dict(
             type=dataset_type,
             ann_file=[
-                '/vhome/wangxuesheng/LRANet-main/data/totaltext/totaltext_train.json'], # data/totaltext/totaltext_train.json
+                'data/totaltext/totaltext_train.json'], # data/totaltext/totaltext_train.json
             img_prefix=[
-                '/vhome/wangxuesheng/LRANet-main/data/totaltext/imgs/training'], # data/totaltext/imgs/training
+                'data/totaltext/imgs/training'], # data/totaltext/imgs/training
             pipeline=train_pipeline)),
     val=dict(
         type=dataset_type,
-        ann_file='/vhome/wangxuesheng/LRANet-main/data/totaltext/totaltext_test.json',
-        img_prefix='/vhome/wangxuesheng/LRANet-main/data/totaltext/imgs',
+        ann_file='data/totaltext/totaltext_test.json',
+        img_prefix='data/totaltext/imgs',
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
-        ann_file='/vhome/wangxuesheng/LRANet-main/data/totaltext/totaltext_test.json',
-        img_prefix='/vhome/wangxuesheng/LRANet-main/data/totaltext/imgs',
+        ann_file='data/totaltext/totaltext_test.json',
+        img_prefix='data/totaltext/imgs',
         pipeline=test_pipeline,))
 evaluation = dict(interval=1, metric='hmean-e2e')
 

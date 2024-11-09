@@ -21,8 +21,8 @@ from mmocr.models import build_detector
 def parse_args():
     parser = argparse.ArgumentParser(
         description='MMOCR test (and eval) a model.')
-    parser.add_argument('config', help='Test config file path.')
-    parser.add_argument('checkpoint', help='Checkpoint file.')
+    parser.add_argument('--config',default='configs/lranet/lranet_totaltext_det_edit.py', help='Test config file path.')
+    parser.add_argument('--checkpoint',default='work_dirs/totaltext_det/epoch_20.pth', help='Checkpoint file.')
     parser.add_argument('--out', help='Output result file in pickle format.')
     parser.add_argument(
         '--fuse-conv-bn',
@@ -43,13 +43,13 @@ def parse_args():
         help='The evaluation metrics, which depends on the dataset, e.g.,'
         '"bbox", "seg", "proposal" for COCO, and "mAP", "recall" for'
         'PASCAL VOC.')
-    parser.add_argument('--show', action='store_true', help='Show results.')
+    parser.add_argument('--show', action='store_true', default='true', help='Show results.')
     parser.add_argument(
-        '--show-dir', help='Directory where the output images will be saved.')
+        '--show-dir', default='tmp', help='Directory where the output images will be saved.')
     parser.add_argument(
         '--show-score-thr',
         type=float,
-        default=0.3,
+        default=0.035,   # 0.3 -> 0.035
         help='Score threshold (default: 0.3).')
     parser.add_argument(
         '--gpu-collect',
@@ -104,7 +104,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-
+    
     assert (
         args.out or args.eval or args.format_only or args.show
         or args.show_dir), (

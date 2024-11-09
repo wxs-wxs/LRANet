@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 import argparse
 import copy
 import os
@@ -17,6 +18,7 @@ from mmocr.apis import train_detector
 from mmocr.datasets import build_dataset
 from mmocr.models import build_detector
 from mmocr.utils import collect_env, get_root_logger
+import pdb
 
 def init_random_seed(seed=None, device='cuda'):
 
@@ -38,8 +40,8 @@ def init_random_seed(seed=None, device='cuda'):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector.')
-    parser.add_argument('config', help='Train config file path.')
-    parser.add_argument('--work-dir', help='The dir to save logs and models.')
+    parser.add_argument('--config', default='configs/lranet/lranet_totaltext_det_edit.py', help='Train config file path.') #
+    parser.add_argument('--work-dir',default='work_dirs/totaltext_det', help='The dir to save logs and models.')
     parser.add_argument(
         '--load-from', help='The checkpoint file to load from.')
     parser.add_argument(
@@ -51,6 +53,7 @@ def parse_args():
     group_gpus = parser.add_mutually_exclusive_group()
     group_gpus.add_argument(
         '--gpus',
+        default=1,
         type=int,
         help='Number of gpus to use '
         '(only applicable to non-distributed training).')
@@ -212,7 +215,6 @@ def main():
         train_cfg=cfg.get('train_cfg'),
         test_cfg=cfg.get('test_cfg'))
     model.init_weights()
-
     datasets = [build_dataset(cfg.data.train)]
     if len(cfg.workflow) == 2:
         val_dataset = copy.deepcopy(cfg.data.val)
