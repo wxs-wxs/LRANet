@@ -127,6 +127,7 @@ def lra_decode( preds, U_t,
                         scale,
                         score_thr=0.1, 
                         shift=0.1,
+                        num_coefficients=14
                         ):
     assert isinstance(preds, list)
 
@@ -143,8 +144,13 @@ def lra_decode( preds, U_t,
     lra_c = lra_pred[tr_pred_mask.reshape(-1)]
     rows, cols = tr_pred_mask.nonzero(as_tuple=True)
     xy_text = torch.stack((rows, cols), dim=1)
+    lra_c1 = lra_c[:,:num_coefficients]
+    lra_c2 = lra_c[:,num_coefficients:]
+    polygons1 = torch.matmul(lra_c1, U_t)
+    polygons2 = torch.matmul(lra_c2, U_t)
+    polygons = torch.cat((polygons1, polygons2), dim=1)
     #polygons = torch.matmul(lra_c, U_t)
-    polygons = lra_c
+    #polygons = lra_c
     polygons = polygons.reshape(-1,polygons.shape[-1]//2,2)
     #print(polygons[0])
     #把预测出来的点先按照各个部分生成mask,然后再把mask融合。比如一个文本被分成了两部分，那么把这两部分多边形分别生成mask，再把他们的mask融合

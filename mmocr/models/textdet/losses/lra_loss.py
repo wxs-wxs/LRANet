@@ -7,7 +7,7 @@ from mmdet.models.builder import LOSSES
 from fvcore.nn import sigmoid_focal_loss_jit
 from mmocr.utils.misc import get_world_size, is_dist_avail_and_initialized
 from scipy.optimize import linear_sum_assignment
-
+import pdb
 INF = 1000000000
 
 class SetCriterion(nn.Module):
@@ -62,7 +62,7 @@ class SetCriterion(nn.Module):
             gamma=self.focal_loss_gamma,
             reduction="sum",
         ) / num_inst
-        losses = {'loss_ce_sparse': class_loss}
+        losses = {'loss_ce_sparse': class_loss} # 计算出来的是p3、p4、p5三个加起来总的损失
 
         return losses
 
@@ -87,7 +87,7 @@ class SetCriterion(nn.Module):
         # permute predictions following indices
         batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
         src_idx = torch.cat([src for (src, _) in indices])
-        return batch_idx, src_idx
+        return batch_idx, src_idx # 目的是把batch的id和文本各自对应起来
 
     def get_loss(self, loss, outputs, targets, indices, num_inst, **kwargs):
         loss_map = {
@@ -185,7 +185,7 @@ class MinCostMatcher(nn.Module):
 @LOSSES.register_module()
 class LRALoss(nn.Module):
 
-    def __init__(self, num_coefficients, path_lra, ohem_ratio=3.,
+    def __init__(self, num_coefficients, path_lra, ohem_ratio=3.,num_points=360,
                  with_weight=True,with_area_weight=True, steps = [8,16,32]
                  ):
         super().__init__()
@@ -195,7 +195,7 @@ class LRALoss(nn.Module):
         self.with_center_weight = with_weight
         self.with_area_weight = with_area_weight
         self.steps = steps
-        self.num_coefficients = num_coefficients
+        self.num_coefficients = num_coefficients * 2
         U_t = np.load(path_lra)['components_c']
         U_t = torch.from_numpy(U_t)
         self.U_t = U_t
@@ -215,12 +215,14 @@ class LRALoss(nn.Module):
     def forward(self, preds, _, p3_maps, p4_maps, p5_maps,polygons_area=None, lra_polys = None,**kwargs):
 
         assert isinstance(preds, list)
-
+        #print("#################################################################1")
         clsass_sparse = []
         reg_points_sparse = []
         device = preds[0][0].device
 
         gts = [p3_maps, p4_maps, p5_maps]
+        #gts = [p3_maps]
+        
         if self.with_area_weight:
             assert polygons_area is not None
             max_num_polygon = max([len(p) for p in polygons_area])
@@ -236,9 +238,10 @@ class LRALoss(nn.Module):
 
         for idx, maps in enumerate(gts):
             gts[idx] = maps.float()
-
+        
+        #preds = [preds]
         losses = multi_apply(self.forward_single, preds, gts, down_sample_rates, gt_polygons_areas)
-
+        #print("#################################################################5")
         loss_ce_dense = torch.tensor(0., device=device,requires_grad=True).float()
         loss_point_dense = torch.tensor(0.0, device=device,requires_grad=True).float()
 
@@ -255,25 +258,33 @@ class LRALoss(nn.Module):
         tr_train_masks = torch.cat(tr_train_masks[0], dim=1)
 
 
-        for i in range(len(preds)):
+        for i in range(len(preds)): # p1\p2\p3 把预测的坐标变回之前的坐标比如从（120，120）-》（960，960），最后的p_pre不再是相对坐标了，加上location之后变成了绝对坐标
             cls_sparse = preds[i][2][:,0,:,:][:, None]
             reg_lra_sparse = preds[i][3].permute(0, 2, 3, 1).contiguous()
             reg_lra_sparse = reg_lra_sparse[:, :, :, :].view(-1, self.num_coefficients)
-            p_pre = torch.matmul(reg_lra_sparse,self.U_t.to(device))
+            lra_coeff1 = reg_lra_sparse[:,:self.num_coefficients//2]
+            lra_coeff2 = reg_lra_sparse[:,self.num_coefficients//2:]
+            p_pre1 = torch.matmul(lra_coeff1,self.U_t.to(device))
+            p_pre2 = torch.matmul(lra_coeff2,self.U_t.to(device))
+            #p_pre = torch.matmul(reg_lra_sparse,self.U_t.to(device))
+            #p_pre = reg_lra_sparse
             bs, _, h, w = cls_sparse.shape
             cls_sparse = cls_sparse.permute(0, 2, 3, 1).contiguous()
             cls_sparse = cls_sparse.view(bs, h*w, -1)
             clsass_sparse.append(cls_sparse)
             locations = self.generate_locations(bs, w, h, device)
-            p_pre[:,0::2] += locations[:,0].unsqueeze(1)
-            p_pre[:,1::2] += locations[:,1].unsqueeze(1)
+            p_pre1[:,0::2] += locations[:,0].unsqueeze(1)
+            p_pre1[:,1::2] += locations[:,1].unsqueeze(1)
+            p_pre2[:,0::2] += locations[:,0].unsqueeze(1)
+            p_pre2[:,1::2] += locations[:,1].unsqueeze(1)
+            p_pre = torch.cat((p_pre1, p_pre2), dim=0)
             p_pre = p_pre * self.steps[i]
             reg_points_sparse.append(p_pre.view(bs, h*w, -1))
-
+        #print("#################################################################2")
         reg_points_sparse = torch.cat(reg_points_sparse, dim=1).permute(0, 2, 1)
         clsass_sparse = torch.cat(clsass_sparse, dim=1).permute(0, 2, 1)
         new_targets = []
-        cnt = 0
+        cnt = 0 # 记录一个bs中总共有多少个文本
 
         for i in range(len(lra_polys)):
             cnt += lra_polys[i].shape[0]
@@ -312,7 +323,7 @@ class LRALoss(nn.Module):
         cls_dense = pred[0].permute(0, 2, 3, 1).contiguous()
         reg_dense = pred[1].permute(0, 2, 3, 1).contiguous()
         gt = gt.permute(0, 2, 3, 1).contiguous()
-
+        #print("#################################################################3")
         tr_pred = cls_dense[:, :, :, :1].view(-1).sigmoid()
         lra_pred = reg_dense[:, :, :, :].view(-1, self.num_coefficients)
         device = lra_pred.device 
@@ -331,7 +342,7 @@ class LRALoss(nn.Module):
         train_mask = gt[:, :, :, 2:3].view(-1)
         tps_map = gt[:, :, :, 3:].view(-1, self.num_coefficients)
 
-        tr_train_mask = ((train_mask * tr_mask) > 0).float()
+        tr_train_mask = ((train_mask * tr_mask) > 0).float() # 这一步去除不用于训练的文本，留下用于训练的文本的mask
 
         bs,h,w,_ = gt.shape
 
@@ -367,10 +378,30 @@ class LRALoss(nn.Module):
             else:
                 weight = weight * 1.0/pos_idx.shape[0]
 
-            p_pre = torch.matmul(lra_pred,self.U_t.to(device))
-            p_gt = torch.matmul(tps_map,self.U_t.to(device))
-            p_gt[:,0::2] -= locations[:,0].unsqueeze(1)
-            p_gt[:,1::2] -= locations[:,1].unsqueeze(1)
+
+
+            #p_pre = torch.matmul(lra_pred,self.U_t.to(device))
+            #p_gt = torch.matmul(tps_map,self.U_t.to(device))
+            #p_pre = lra_pred
+            #p_gt = tps_map
+            lra_pred1 = lra_pred[:,:self.num_coefficients//2]
+            lra_pred2 = lra_pred[:,self.num_coefficients//2:]
+            p_pre1 = torch.matmul(lra_pred1,self.U_t.to(device))
+            p_pre2 = torch.matmul(lra_pred2,self.U_t.to(device))
+            p_pre = torch.cat((p_pre1, p_pre2), dim=0)
+
+            tps_map1 = tps_map[:,:self.num_coefficients//2]
+            tps_map2 = tps_map[:,self.num_coefficients//2:]
+            p_gt1 = torch.matmul(tps_map1,self.U_t.to(device))
+            p_gt2 = torch.matmul(tps_map2,self.U_t.to(device))
+            p_gt1[:,0::2] -= locations[:,0].unsqueeze(1)
+            p_gt1[:,1::2] -= locations[:,1].unsqueeze(1)
+            p_gt2[:,0::2] -= locations[:,0].unsqueeze(1)
+            p_gt2[:,1::2] -= locations[:,1].unsqueeze(1)
+            p_gt = torch.cat((p_gt1, p_gt2), dim=0)
+            #print("#################################################################4")
+            # p_gt[:,0::2] -= locations[:,0].unsqueeze(1)
+            # p_gt[:,1::2] -= locations[:,1].unsqueeze(1)
 
             loss_point =  torch.sum(weight*F.smooth_l1_loss(
                 p_gt[pos_idx],
@@ -401,8 +432,7 @@ class LRALoss(nn.Module):
     def ohem(self, predict, target, train_mask):
         pos = (target * train_mask).bool()
         neg = ((1 - target) * train_mask).bool()
-        n_pos = pos.float().sum()
-
+        n_pos = pos.float().sum() 
         if n_pos.item() > 0:
             loss_pos = self.BCE_loss(predict[pos], target[pos]).sum()
             loss_neg = self.BCE_loss(predict[neg], target[neg])

@@ -9,6 +9,7 @@ from mmocr.models.textdet.dense_heads.head_mixin import HeadMixin
 from ..postprocess.lra_decoder import  poly_nms
 import math
 import numpy as np
+import pdb
 
 @HEADS.register_module()
 class LRAHead(HeadMixin, BaseModule):
@@ -34,17 +35,16 @@ class LRAHead(HeadMixin, BaseModule):
         self.scales = scales
         loss['steps'] = scales
         self.loss_module = build_loss(loss)
-        self.score_thr = score_thr
+        self.score_thr = 0.06 #score_thr->0.02
         self.nms_thr = nms_thr
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         self.num_convs = num_convs
-        self.out_channels_reg = num_coefficients
+        self.out_channels_reg = num_coefficients * 2
         self.box_iou = box_iou
         U_t = np.load(path_lra)['components_c']
         U_t = torch.from_numpy(U_t)
         self.U_t = U_t
-
         if self.num_convs > 0:
             cls_convs = []
             reg_convs = []
@@ -91,18 +91,24 @@ class LRAHead(HeadMixin, BaseModule):
         torch.nn.init.constant_(self.out_conv_cls_sparse.bias, bias_value)
         self.init_weights()
 
+        
+   
     def init_weights(self):
         normal_init(self.out_conv_cls_dense, mean=0, std=0.01)
         normal_init(self.out_conv_reg_dense, mean=0, std=0.01)
         normal_init(self.out_conv_reg_sparse, mean=0, std=0.01)
 
-    def forward(self, feats):
-        cls_dense, reg_dense, cls_sparse, reg_sparse = multi_apply(self.forward_single, feats)
+
+
+    def forward(self, feats):   
+        cls_dense, reg_dense, cls_sparse, reg_sparse = multi_apply(self.forward_single, feats) #len(feats)=3
         level_num = len(cls_dense)
         preds = [[cls_dense[i], reg_dense[i], cls_sparse[i], reg_sparse[i]] for i in range(level_num)]
         return preds
 
     def forward_single(self, x):
+        if x.ndim < 4:
+            x = torch.unsqueeze(x, dim=0)
         if self.num_convs > 0:
             x_cls = self.cls_convs(x)
             x_reg = self.reg_convs(x)
@@ -146,3 +152,4 @@ class LRAHead(HeadMixin, BaseModule):
             scale=scale,
             score_thr=self.score_thr,
         )
+
