@@ -1,0 +1,4 @@
+bash ./tools/dist_train.sh configs/lranet/lranet_totaltext_det_edit.py work_dirs/totaltext_det 2
+CUDA_VISIBLE_DEVICES=0,1 setsid nohup bash tools/dist_train.sh configs/lranet/lranet_totaltext_det_edit.py work_dirs/totaltext_det 2 > ./output/2.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0,1 setsid nohup bash tools/dist_test.sh configs/lranet/lranet_totaltext_det_edit.py work_dirs/totaltext_det/epoch_1.pth 2 > ./output/1.log 2>&1 &
+CUDA_VISIBLE_DEVICES=0,1 PORT=29802 setsid nohup bash tools/dist_train.sh configs/lranet/lranet_totaltext_det_edit.py work_dirs/totaltext_det 2 > ./output/2.log 2>&1 &

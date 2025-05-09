@@ -1,0 +1,1 @@
+Usage: bash tools/dist_train.sh CONFIG WORK_DIR GPUS
